@@ -83,21 +83,24 @@ methods return either `this` or a new instance."
 ;; manage a group of creatures.
 
 (defrecord Population
-    [env size members])
+    [env size members generation])
 
 (defn population
   "Create a population. `ctor` tells us how to create the first
   generation, `env` is the environment that the population will be
   judged fit by, and `size` is how many in each generation."
   [ctor env size]
-  (Population. env size (take size (repeatedly ctor))))
+  (Population. env size (take size (repeatedly ctor)) 0))
 
 (defn cull
  "Kill off all but a certain number of the population. Defaults to keeping 1/3."
  ([pop]
     (cull pop (int (/ (:size pop) 3))))
  ([pop keepn]
-    (update-in pop [:members] #(take keepn %))))
+    (let [max-age (:max-age (:env pop))
+          members (if max-age (filter #(<= (:age %) max-age) (:members pop))
+                      (:members pop))]
+      (assoc pop :members (take keepn members)))))
 
 (defn regenerate
   "Rebuild a (probably just-culled) population up to size by
@@ -113,7 +116,7 @@ methods return either `this` or a new instance."
                                  (first (shuffle (rest members))))))))
    (map #(calculate-fitness % env))
    (sort-by get-fitness)
-   (assoc pop :members)))
+   (assoc (update-in pop [:generation] inc) :members)))
 
 (defn iterate-population
   "Run a single evaluate/cull/regenerate cycle"

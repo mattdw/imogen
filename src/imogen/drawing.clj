@@ -54,7 +54,7 @@
   "Draw the polygon in the obvious manner. We draw to a provided Graphics2D."
   [{:keys [color coords]} {:keys [graphics width height]}]
   (let [c (apply make-color color)]
-    (doto graphics
+    (doto ^Graphics2D graphics
       (.setColor c)
       (.fillPolygon (int-array (map #(* width %) (first coords)))
                     (int-array (map #(* height %) (second coords)))
@@ -114,5 +114,5 @@
 (defn calculate-distance
   "calculate the distance of a creature's :image from the env's :image"
   [creature env]
-  (let [new-creature (if (:image creature) creature (render-creature creature))]
-    (assoc creature :fitness (image-distance (:image creature) (:image env)))))
+  (let [new-creature (if (:image creature) creature (render-creature creature env))]
+    (assoc new-creature :fitness (image-distance (:image new-creature) (:image env)))))

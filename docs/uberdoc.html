@@ -2534,32 +2534,159 @@ polygons on each other.</p>
 <p><a href="http://mattdw.github.com/experiments/image-evo/">http://mattdw.github.com/experiments/image-evo/</a> is roughly the same
 thing, in Javascript.</p>
 </td><td class="codes" /><pre class="brush: clojure">(ns imogen.core
-  &quot;A stochastic hill-climber (I think.) A rough simulation of
-evolutionary processes to match an image by overlaying a bunch of
-polygons on each other.
-&lt;http://mattdw.github.com/experiments/image-evo/&gt; is roughly the same
-thing, in Javascript.&quot;
   (:use [imogen.genetic :only [population run-population Fitness]]
-        [imogen.drawing :only [render-creature calculate-distance]])
-  (:import [imogen.genetic Creature]))</pre></tr><tr><td class="docs">
-</td><td class="codes" /><pre class="brush: clojure">(population #(Creature. 0 0 []) {} 10)</pre></tr><tr><td class="docs">
+        [imogen.drawing :only [render-creature calculate-distance image-pixels]]
+        [seesaw.core]
+        [seesaw.chooser :only [choose-file]])
+  (:import [imogen.genetic Creature]
+           [javax.imageio ImageIO]
+           [java.awt Image]
+           [java.awt.image BufferedImage]))</pre></tr><tr><td class="docs">
 </td><td class="codes" /><pre class="brush: clojure">(defn polygonal-creature
   &quot;Creates an empty creature, but with a given number of prepopulated genes.&quot;
   ([] (polygonal-creature 200))
   ([length]
    (Creature. 0 0 (take length (repeatedly rand)))))</pre></tr><tr><td class="docs">
-</td><td class="codes" /><pre class="brush: clojure">(defn starting-population
-  []
-  (population polygonal-creature env))</pre></tr><tr><td class="docs">
 </td><td class="codes" /><pre class="brush: clojure">(extend Creature
   Fitness
-  {:calculate-fitness calculate-distance}
-  {:get-fitness :fitness})</pre></tr><tr><td class="spacer docs">&nbsp;</td><td class="codes" /></tr><tr><td class="docs"><div class="docs-header"><a class="anchor" href="#imogen.drawing" name="imogen.drawing"><h1 class="project-name">imogen.drawing</h1><a class="toc-link" href="#toc">toc</a></a></div></td><td class="codes" /></tr><tr><td class="docs"><p>Drawing code for our particular creatures.</p>
+  {:calculate-fitness calculate-distance
+   :get-fitness :fitness})</pre></tr><tr><td class="docs">
+</td><td class="codes" /><pre class="brush: clojure">(def current-population (atom nil))
+(def running (atom false))
+(def input-image (atom nil))
+(def output-image (atom nil))</pre></tr><tr><td class="docs">
+</td><td class="codes" /><pre class="brush: clojure">(defn update-interface []
+  (.repaint @output-image))</pre></tr><tr><td class="docs">
+</td><td class="codes" /><pre class="brush: clojure">(defn population-hook
+  &quot;This gets run for every new generation.&quot;
+  [new-pop]
+  (reset! current-population new-pop)
+  (update-interface))</pre></tr><tr><td class="docs">
+</td><td class="codes" /><pre class="brush: clojure">(defn run-loop
+  []
+  (future
+    (loop [gens (run-population @current-population population-hook)]
+      (when @running
+        (first gens)
+        (recur (rest gens))))))</pre></tr><tr><td class="docs"><p>params</p>
+</td><td class="codes" /></tr><tr><td class="docs">
+</td><td class="codes" /><pre class="brush: clojure">(def inputs (atom {:render-width 200
+                   :output-width 800
+                   :population-size 10
+                   :num-genes 200
+                   :max-age 15}))</pre></tr><tr><td class="docs">
+</td><td class="codes" /><pre class="brush: clojure">(def spinner-settings
+  {:render-width [50 500 50]
+   :output-width [100 5000 100]
+   :population-size [6 50 1]
+   :num-genes [50 5000 10]
+   :max-age [3 1000 1]})</pre></tr><tr><td class="docs">
+</td><td class="codes" /><pre class="brush: clojure">(defn update-input
+  [kw]
+  (fn [e]
+    (swap! inputs assoc-in [kw] (selection e))))</pre></tr><tr><td class="docs">
+</td><td class="codes" /><pre class="brush: clojure">(defn widget-for-setting
+  [setting-key]
+  (let [[f t b] (setting-key spinner-settings)]
+    (doto (spinner :model (spinner-model
+                         (setting-key @inputs)
+                         :from f :to t :by b))
+        (listen :selection (update-input setting-key)))))</pre></tr><tr><td class="docs"><p>commands</p>
+</td><td class="codes" /></tr><tr><td class="docs"><p>play/pause
+restart
+load
+save =</p>
+</td><td class="codes" /></tr><tr><td class="docs">
+</td><td class="codes" /><pre class="brush: clojure">(defn get-scaled-buffered-image [file-handle]
+  (let [in-image (-&gt; (ImageIO/read file-handle)
+                      (.getScaledInstance (:render-width @inputs)
+                                          -1 Image/SCALE_DEFAULT))
+        width (.getWidth in-image)
+        height (.getHeight in-image)
+        b-image (BufferedImage. width height
+                                BufferedImage/TYPE_INT_ARGB)
+        g (.getGraphics b-image)]
+    (.drawImage g in-image 0 0 width height nil)
+    (.dispose g)
+    b-image))</pre></tr><tr><td class="docs"><p>to open</p>
+</td><td class="codes" /><pre class="brush: clojure">(defn open []
+  (when-let [file (choose-file :filters [[&quot;Images&quot; [&quot;png&quot; &quot;jpeg&quot; &quot;jpg&quot;
+                                                &quot;gif&quot; &quot;tif&quot; &quot;tiff&quot;]]])]
+    (let
+        [image (get-scaled-buffered-image file)
+         width (.getWidth image)
+         height (.getHeight image)
+         env {:image image :pixels (image-pixels image)
+              :width width :height height
+              :max-age (:max-age @inputs)}]
+      (reset! running false)
+      (config! [@input-image @output-image] :size [width :by height])
+      (pack! (all-frames))
+      (reset! current-population (population
+                                  #(polygonal-creature (:num-genes @inputs))
+                                  env
+                                  (:population-size @inputs)))
+      (.repaint @input-image)
+      (reset! running true)
+      (run-loop))))</pre></tr><tr><td class="docs"><p>to save</p>
+</td><td class="codes" /><pre class="brush: clojure">(defn save [creature env]
+  (when-let [fh (choose-file :type :save)]
+    (let [image (:image (render-creature creature {:width (:output-width @inputs)
+                                                   :height (* (/ (:output-width @inputs) (:width env))
+                                                              (:height env))}))]
+      (ImageIO/write image &quot;png&quot; fh))))</pre></tr><tr><td class="docs">
+</td><td class="codes" /><pre class="brush: clojure">(defn save-current-best []
+  (when-let [popl @current-population]
+    (save (first (:members popl)) (:env popl))))</pre></tr><tr><td class="docs">
+</td><td class="codes" /><pre class="brush: clojure">(defn make-settings-panel []
+  (grid-panel :columns 2 :vgap 5 :hgap 5
+              :items [&quot;Render width:&quot; (widget-for-setting :render-width)
+                      &quot;Output width:&quot; (widget-for-setting :output-width)
+                      &quot;Population size:&quot; (widget-for-setting :population-size)
+                      &quot;Number of genes:&quot; (widget-for-setting :num-genes)
+                      &quot;Max age:&quot; (widget-for-setting :max-age)]))</pre></tr><tr><td class="docs">
+</td><td class="codes" /><pre class="brush: clojure">(defn start-stop-button []
+  (button :action (action :name &quot;Start&quot; :handler (fn [_] (swap! running not)))))</pre></tr><tr><td class="docs">
+</td><td class="codes" /><pre class="brush: clojure">(defn save-button []
+  (button :action (action :name &quot;Save&quot; :handler (fn [_] (save-current-best)))))</pre></tr><tr><td class="docs">
+</td><td class="codes" /><pre class="brush: clojure">(defn load-button []
+  (button :action (action :name &quot;Load&quot; :handler (fn [_] (open)))))</pre></tr><tr><td class="docs">
+</td><td class="codes" /><pre class="brush: clojure">(defn make-control-panel []
+  (flow-panel
+   :items [(start-stop-button)
+           (load-button)
+           (save-button)]))</pre></tr><tr><td class="docs">
+</td><td class="codes" /><pre class="brush: clojure">(defn draw-input-image [c g]
+  (when-let [popl @current-population]
+    (.drawImage g (:image (:env popl)) 0 0 nil)))</pre></tr><tr><td class="docs">
+</td><td class="codes" /><pre class="brush: clojure">(defn input-panel []
+  (let [p (seesaw.core/canvas
+           :paint draw-input-image)]
+    (reset! input-image p)
+    p))</pre></tr><tr><td class="docs">
+</td><td class="codes" /><pre class="brush: clojure">(defn draw-output-image [c g]
+  (when-let [popl @current-population]
+    (.drawImage g (:image (first (:members popl))) 0 0 nil)))</pre></tr><tr><td class="docs">
+</td><td class="codes" /><pre class="brush: clojure">(defn output-panel []
+  (let [p (seesaw.core/canvas
+           :paint draw-output-image)]
+    (reset! output-image p)
+    p))</pre></tr><tr><td class="docs">
+</td><td class="codes" /><pre class="brush: clojure">(defn make-content-panel []
+  (horizontal-panel
+   :items [(grid-panel :columns 2 :vgap 10 :hgap 10
+                       :items [(input-panel)
+                               (output-panel)])
+           (vertical-panel
+                       :items [(make-settings-panel)
+                               (make-control-panel)])]))</pre></tr><tr><td class="docs">
+</td><td class="codes" /><pre class="brush: clojure">(defn -main [&amp; args]
+  (-&gt; (frame :title &quot;Imogen&quot; :content (make-content-panel) :on-close :exit)
+      pack!
+      show!))</pre></tr><tr><td class="spacer docs">&nbsp;</td><td class="codes" /></tr><tr><td class="docs"><div class="docs-header"><a class="anchor" href="#imogen.drawing" name="imogen.drawing"><h1 class="project-name">imogen.drawing</h1><a class="toc-link" href="#toc">toc</a></a></div></td><td class="codes" /></tr><tr><td class="docs"><p>Drawing code for our particular creatures.</p>
 </td><td class="codes" /><pre class="brush: clojure">(ns imogen.drawing
   (:import [java.awt.image BufferedImage]
-           [java.awt Color Graphics2D Graphics Dimension RenderingHints Insets]
-           [java.awt.color ColorSpace]
-           [javax.imageio ImageIO]))</pre></tr><tr><td class="docs"><p>we'll be interpreting all of a creature's gene here, so we'll need
+           [java.awt Color Graphics2D Graphics RenderingHints]))</pre></tr><tr><td class="docs"><p>we'll be interpreting all of a creature's gene here, so we'll need
 some helpers</p>
 </td><td class="codes" /></tr><tr><td class="docs"><p>Converts a float 0-1 to an int number of vertices. This will give us an int between 3 and 9.</p>
 </td><td class="codes" /><pre class="brush: clojure">(defn float-to-num-vertices
@@ -2597,7 +2724,7 @@ some helpers</p>
 </td><td class="codes" /><pre class="brush: clojure">(defn draw-polygon
   [{:keys [color coords]} {:keys [graphics width height]}]
   (let [c (apply make-color color)]
-    (doto graphics
+    (doto ^Graphics2D graphics
       (.setColor c)
       (.fillPolygon (int-array (map #(* width %) (first coords)))
                     (int-array (map #(* height %) (second coords)))
@@ -2644,8 +2771,8 @@ pretty fast.</p>
   (assoc creature :image (draw-genes (:genes creature) environment)))</pre></tr><tr><td class="docs"><p>calculate the distance of a creature's :image from the env's :image</p>
 </td><td class="codes" /><pre class="brush: clojure">(defn calculate-distance
   [creature env]
-  (let [new-creature (if (:image creature) creature (render-creature creature))]
-    (assoc creature :fitness (image-distance (:image creature) (:image env)))))</pre></tr><tr><td class="spacer docs">&nbsp;</td><td class="codes" /></tr><tr><td class="docs"><div class="docs-header"><a class="anchor" href="#imogen.genetic" name="imogen.genetic"><h1 class="project-name">imogen.genetic</h1><a class="toc-link" href="#toc">toc</a></a></div></td><td class="codes" /></tr><tr><td class="docs"><p>The basics of a genetic algorithm.</p>
+  (let [new-creature (if (:image creature) creature (render-creature creature env))]
+    (assoc new-creature :fitness (image-distance (:image new-creature) (:image env)))))</pre></tr><tr><td class="spacer docs">&nbsp;</td><td class="codes" /></tr><tr><td class="docs"><div class="docs-header"><a class="anchor" href="#imogen.genetic" name="imogen.genetic"><h1 class="project-name">imogen.genetic</h1><a class="toc-link" href="#toc">toc</a></a></div></td><td class="codes" /></tr><tr><td class="docs"><p>The basics of a genetic algorithm.</p>
 </td><td class="codes" /><pre class="brush: clojure">(ns imogen.genetic)</pre></tr><tr><td class="docs"><p>Let's start setting up some of the genetic stuff.</p>
 </td><td class="codes" /></tr><tr><td class="docs"><p>A set of methods a creature will have to respond to to evolve. Most
 methods return either <code>this</code> or a new instance.</p>
@@ -2705,19 +2832,22 @@ the <code>Evolving</code> methods. <code>Fitness</code> will be specific to your
 manage a group of creatures.</p>
 </td><td class="codes" /></tr><tr><td class="docs">
 </td><td class="codes" /><pre class="brush: clojure">(defrecord Population
-    [env size members])</pre></tr><tr><td class="docs">
+    [env size members generation])</pre></tr><tr><td class="docs">
 </td><td class="codes" /><pre class="brush: clojure">(defn population
   &quot;Create a population. `ctor` tells us how to create the first
   generation, `env` is the environment that the population will be
   judged fit by, and `size` is how many in each generation.&quot;
   [ctor env size]
-  (Population. env size (take size (repeatedly ctor))))</pre></tr><tr><td class="docs">
+  (Population. env size (take size (repeatedly ctor)) 0))</pre></tr><tr><td class="docs">
 </td><td class="codes" /><pre class="brush: clojure">(defn cull
  &quot;Kill off all but a certain number of the population. Defaults to keeping 1/3.&quot;
  ([pop]
     (cull pop (int (/ (:size pop) 3))))
  ([pop keepn]
-    (update-in pop [:members] #(take keepn %))))</pre></tr><tr><td class="docs">
+    (let [max-age (:max-age (:env pop))
+          members (if max-age (filter #(&lt;= (:age %) max-age) (:members pop))
+                      (:members pop))]
+      (assoc pop :members (take keepn members)))))</pre></tr><tr><td class="docs">
 </td><td class="codes" /><pre class="brush: clojure">(defn regenerate
   &quot;Rebuild a (probably just-culled) population up to size by
   cross-breeding the remaining members. Currently the alpha (most fit)
@@ -2732,7 +2862,7 @@ manage a group of creatures.</p>
                                  (first (shuffle (rest members))))))))
    (map #(calculate-fitness % env))
    (sort-by get-fitness)
-   (assoc pop :members)))</pre></tr><tr><td class="docs">
+   (assoc (update-in pop [:generation] inc) :members)))</pre></tr><tr><td class="docs">
 </td><td class="codes" /><pre class="brush: clojure">(defn iterate-population
   &quot;Run a single evaluate/cull/regenerate cycle&quot;
   [{:keys [env members] :as pop} hook-func]
