@@ -48,7 +48,8 @@
 (defn make-color
   "A wrapper over java.awt.Color"
   [r g b a]
-  (Color. (float r) (float g) (float b) (float a)))
+  ;; alpha is clamped between 0.25 and 0.75
+  (Color. (float r) (float g) (float b) (float (+ 0.25 (* a 0.5)))))
 
 (defn draw-polygon
   "Draw the polygon in the obvious manner. We draw to a provided Graphics2D."
