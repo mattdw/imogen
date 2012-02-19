@@ -85,13 +85,23 @@
   (Math/abs (int (bit-shift-right (- (bit-and a mask) (bit-and b mask)) shift))))
 
 (defn color-dist
+  "Compare all channels (excl. alpha) of two colours."
   [a b]
   (let [a (int a)
         b (int b)
         dr (subtract-and-shift a b 0xff0000 16)
         dg (subtract-and-shift a b 0xff00 8)
         db (subtract-and-shift a b 0xff 0)]
-    (int (+ dr (+ dg db)))))
+    (int (+ dr dg db))))
+
+(defn channel-dist
+  "Compare a single channel of two pixels. By cycling `channel` we do
+  a third of the work for much the same results."
+  [a b channel]
+  (case channel
+    :r (subtract-and-shift a b 0xff0000 16)
+    :g (subtract-and-shift a b 0xff00 8)
+    :b (subtract-and-shift a b 0xff 0)))
 
 (defn image-pixels
   "Return an array of TYPE_INT_RGB"
@@ -101,8 +111,8 @@
     (.getRGB img 0 0 width height nil 0 width)))
 
 (defn image-distance
-  [image1 image2]
-  (reduce + 0 (map color-dist (image-pixels image1) (image-pixels image2))))
+  [to-test master-pixels]
+  (reduce + 0 (map channel-dist (image-pixels to-test) master-pixels (cycle [:r :g :b]))))
 
 ;; High-level API
 
@@ -116,4 +126,4 @@
   "calculate the distance of a creature's :image from the env's :image"
   [creature env]
   (let [new-creature (if (:image creature) creature (render-creature creature env))]
-    (assoc new-creature :fitness (image-distance (:image new-creature) (:image env)))))
+    (assoc new-creature :fitness (image-distance (:image new-creature) (:pixels env)))))

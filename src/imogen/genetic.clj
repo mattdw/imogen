@@ -114,7 +114,7 @@ methods return either `this` or a new instance."
                   #(mutate
                     (cross-breed (first members)
                                  (first (shuffle (rest members))))))))
-   (map #(calculate-fitness % env))
+   (pmap #(calculate-fitness % env))
    (sort-by get-fitness)
    (assoc (update-in pop [:generation] inc) :members)))
 

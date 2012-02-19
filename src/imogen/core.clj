@@ -8,7 +8,8 @@ thing, in Javascript."
   (:use [imogen.genetic :only [population run-population Fitness]]
         [imogen.drawing :only [render-creature calculate-distance image-pixels]]
         [seesaw.core]
-        [seesaw.chooser :only [choose-file]])
+        [seesaw.chooser :only [choose-file]]
+        [clojure.string :only [join]])
   (:import [imogen.genetic Creature]
            [javax.imageio ImageIO]
            [java.awt Image]
@@ -30,6 +31,8 @@ thing, in Javascript."
 (def running (atom false))
 (def input-image (atom nil))
 (def output-image (atom nil))
+(def play-pause-button (atom nil))
+(def info-panel-textarea (atom nil))
 
 (defn update-interface []
   (.repaint @output-image))
@@ -38,23 +41,32 @@ thing, in Javascript."
   "This gets run for every new generation."
   [new-pop]
   (reset! current-population new-pop)
+  (text! @info-panel-textarea
+         (let [pop @current-population
+               best (-> pop :members first)]
+             (str "Generation:\t" (-> pop :generation) "\n"
+                  "Ages:\t" (join "," (map :age (:members pop))) "\n"
+                  "Best Fitness:\t" (:fitness best) "\n"
+                  "Best Length:\t" (count (:genes best)) "\n"
+                  "Avg px Error:\t" (int (/ (:fitness best)
+                                            (* (-> pop :env :width)
+                                               (-> pop :env :height)))))))
   (update-interface))
 
 (defn run-loop
   []
-  (future
-    (loop [gens (run-population @current-population population-hook)]
-      (when @running
-        (first gens)
-        (recur (rest gens))))))
+  (loop [gens (run-population @current-population population-hook)]
+    (when @running
+      (first gens)
+      (recur (rest gens)))))
 
 
 ;; params
 
-(def inputs (atom {:render-width 200
-                   :output-width 800
-                   :population-size 10
-                   :num-genes 200
+(def inputs (atom {:render-width 150
+                   :output-width 1000
+                   :population-size 15
+                   :num-genes 400
                    :max-age 15}))
 
 (def spinner-settings
@@ -80,6 +92,20 @@ thing, in Javascript."
 ;; commands
 
 ;; play/pause
+
+(defn start []
+  (reset! running true)
+  (config! @play-pause-button :text "Pause")
+  (future-call run-loop))
+
+(defn stop []
+  (reset! running false)
+  (config! @play-pause-button :text "Start"))
+
+
+(defn play-pause []
+  (if @running (stop) (start)))
+
 ;; restart
 ;; load
 ;; save =
@@ -109,7 +135,7 @@ thing, in Javascript."
          env {:image image :pixels (image-pixels image)
               :width width :height height
               :max-age (:max-age @inputs)}]
-      (reset! running false)
+      (stop)
 
       (config! [@input-image @output-image] :size [width :by height])
       (pack! (all-frames))
@@ -119,8 +145,7 @@ thing, in Javascript."
                                   env
                                   (:population-size @inputs)))
       (.repaint @input-image)
-      (reset! running true)
-      (run-loop))))
+      (start))))
 
 
 ;; to save
@@ -146,7 +171,9 @@ thing, in Javascript."
 
 
 (defn start-stop-button []
-  (button :action (action :name "Start" :handler (fn [_] (swap! running not)))))
+  (reset! play-pause-button
+          (button :action (action :name "Start"
+                                  :handler (fn [_] (play-pause))))))
 
 (defn save-button []
   (button :action (action :name "Save" :handler (fn [_] (save-current-best)))))
@@ -180,6 +207,14 @@ thing, in Javascript."
     (reset! output-image p)
     p))
 
+(defn info-panel []
+  (reset! info-panel-textarea
+          (text :multi-line? true
+                :editable? false
+                :margin 20
+                :rows 20
+                :size [250 :by 250])))
+
 (defn make-content-panel []
   (horizontal-panel
    :items [(grid-panel :columns 2 :vgap 10 :hgap 10
@@ -187,7 +222,8 @@ thing, in Javascript."
                                (output-panel)])
            (vertical-panel
                        :items [(make-settings-panel)
-                               (make-control-panel)])]))
+                               (make-control-panel)])
+           (info-panel)]))
 
 (defn -main [& args]
   (-> (frame :title "Imogen" :content (make-content-panel) :on-close :exit)
