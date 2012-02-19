@@ -151,6 +151,7 @@ thing, in Javascript."
   "Choose an image from the file-browser, load it, and start the
   population running."
   []
+  (stop)
   (when-let [file (choose-file :filters [["Images" ["png" "jpeg" "jpg"
                                                 "gif" "tif" "tiff"]]])]
     (let
