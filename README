@@ -1,13 +1,13 @@
 # imogen
 
-FIXME: write description
+Image Evolution (see <http://mattdw.github.com/experiments/image-evo/> and <http://alteredqualia.com/visualization/evolve/>) in Clojure, including a nasty Swing GUI.
 
 ## Usage
 
-FIXME: write
+`lein run`.
 
 ## License
 
-Copyright (C) 2012 FIXME
+Copyright (C) 2012 Matthew Wilson
 
 Distributed under the Eclipse Public License, the same as Clojure.
