@@ -5,4 +5,4 @@
   :warn-on-reflection true
   :dependencies [[org.clojure/clojure "1.3.0"]
                  [seesaw "1.3.1-SNAPSHOT"]]
-  :dev-dependencies [[lein-marginalia "0.6.0"]])
+  :dev-dependencies [[lein-marginalia "0.7.0-SNAPSHOT"]])

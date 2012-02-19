@@ -3,18 +3,19 @@
   (:import [java.awt.image BufferedImage]
            [java.awt Color Graphics2D Graphics RenderingHints]))
 
-;; we'll be interpreting all of a creature's gene here, so we'll need
+;; We'll be interpreting all of a creature's gene here, so we'll need
 ;; some helpers
 
 (defn float-to-num-vertices
-  "Converts a float 0-1 to an int number of vertices. This will give us an int between 3 and 9."
+  "Converts a float 0-1 to an int number of vertices. This will give us an int between 4 and 8."
   [x]
-  (int (+ 3 (* x 6))))
+  (int (+ 4 (* x 5))))
 
 (defn next-gene-set
   "A polygon is just a sequence of floats 0-1. The first four make up
   the colour, and the fifth tells us how many x,y pairs to consume
-  from `ts`. We return a pair of [consumed, unconsumed]."
+  from `ts`. We return a pair of `[polygon_map, unconsumed]`, or `nil`
+  if there's not enough left for us."
   [[r g b a vs & ts]]
   (when vs
    (let [num-verts (float-to-num-vertices vs)
@@ -23,7 +24,8 @@
      ;; which I take to mean color def (4), num verts (1), and then 3
      ;; x,y pairs.
      (when (>= (count xs_ys) 6)
-       [{:color [r g b a] :coords (apply map vector (partition 2 xs_ys))} remaining]))))
+       [{:color [r g b a] :coords (apply map vector (partition 2 xs_ys))}
+        remaining]))))
 
 (defn unfoldr
   "Unfoldr is roughly the opposite of reduce. It takes a seed and a
@@ -104,26 +106,33 @@
     :b (subtract-and-shift a b 0xff 0)))
 
 (defn image-pixels
-  "Return an array of TYPE_INT_RGB"
+  "Return an array of `TYPE_INT_RGB`"
   [#^BufferedImage img]
   (let [width (.getWidth img)
         height (.getHeight img)]
     (.getRGB img 0 0 width height nil 0 width)))
 
 (defn image-distance
-  [to-test master-pixels]
-  (reduce + 0 (map channel-dist (image-pixels to-test) master-pixels (cycle [:r :g :b]))))
+  "Calculate the distance between an image and an array of pixels from
+  a second image. (The asymmetry is an optimisation.)"
+  [to-test
+  master-pixels]
+  (reduce + 0
+    (map channel-dist (image-pixels to-test) master-pixels (cycle [:r :g :b]))))
 
 ;; High-level API
 
 (defn render-creature
   "Takes a creature and an environment and returns a creature with an
-  :image field."
+  `:image` field."
   [creature environment]
   (assoc creature :image (draw-genes (:genes creature) environment)))
 
 (defn calculate-distance
-  "calculate the distance of a creature's :image from the env's :image"
+  "Calculates the distance of a creature's image from the env's image."
   [creature env]
   (let [new-creature (if (:image creature) creature (render-creature creature env))]
-    (assoc new-creature :fitness (image-distance (:image new-creature) (:pixels env)))))
+    ;; all other things being equal, less genes is fitter.
+    (assoc new-creature :fitness (+ (count (:genes new-creature))
+                                  (image-distance (:image new-creature)
+                                                  (:pixels env))))))
